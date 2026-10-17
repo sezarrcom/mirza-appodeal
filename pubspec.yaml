@@ -1,0 +1,22 @@
+name: mirza_appodeal
+description: Appodeal mediation for the Mirza Games apps - the ad plugin and consent flow mirza_core's AdsMax runs on (PluginAds).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mirza_core:
+    path: ../../blockflow/packages/mirza_core
+  # Appodeal SDK 4.3.0. Each app lists the network adapters in its
+  # android/app/build.gradle.kts and the artifactory repo in
+  # android/build.gradle.kts (see README.md).
+  stack_appodeal_flutter: 4.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
