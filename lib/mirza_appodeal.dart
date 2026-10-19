@@ -50,7 +50,72 @@ abstract class AppodealApi {
   /// The SDK's single 320 x 50 banner view for [placement], as a widget
   /// that takes layout space (never the SDK's overlay banner).
   Widget bannerView(String placement);
+
+  /// The SDK's revenue report, one per paid impression of any format (19 Oct
+  /// 2026). Not abstract, so a fake that does not care still compiles.
+  void setRevenueCallback(void Function(AppodealRevenue revenue) onRevenue) {}
 }
+
+/// One paid impression as Appodeal reports it, with the SDK's ad type
+/// already named the way GA4's `ad_format` wants it.
+class AppodealRevenue {
+  /// `banner`, `interstitial`, `rewarded`, `mrec`, `native` or `unknown`.
+  final String format;
+
+  /// The network that filled it (`Unity Ads`, `AppLovin`, ...).
+  final String networkName;
+  final String demandSource;
+
+  /// Appodeal's own unit name, and the placement the app asked with.
+  final String adUnitName;
+  final String placement;
+  final double revenue;
+
+  /// Appodeal reports in USD.
+  final String currency;
+
+  /// `exact`, `estimated`, `publisher_defined` or `undefined`.
+  final String precision;
+
+  const AppodealRevenue({
+    required this.format,
+    required this.networkName,
+    required this.demandSource,
+    required this.adUnitName,
+    required this.placement,
+    required this.revenue,
+    required this.currency,
+    required this.precision,
+  });
+
+  AppodealRevenue.fromSdk(AppodealAdRevenue r)
+      : this(
+          format: appodealFormatName(r.adType),
+          networkName: r.networkName,
+          demandSource: r.demandSource,
+          adUnitName: r.adUnitName,
+          placement: r.placement,
+          revenue: r.revenue,
+          currency: r.currency,
+          precision: r.revenuePrecision,
+        );
+}
+
+/// The GA4 `ad_format` name of an Appodeal ad type: every banner position is
+/// `banner`; a type the studio never asks for is named all the same.
+String appodealFormatName(AppodealAdType type) => switch (type) {
+      AppodealAdType.Banner ||
+      AppodealAdType.BannerBottom ||
+      AppodealAdType.BannerTop ||
+      AppodealAdType.BannerLeft ||
+      AppodealAdType.BannerRight =>
+        'banner',
+      AppodealAdType.Interstitial => 'interstitial',
+      AppodealAdType.RewardedVideo => 'rewarded',
+      AppodealAdType.MREC => 'mrec',
+      AppodealAdType.NativeAd => 'native',
+      AppodealAdType.None || AppodealAdType.All => 'unknown',
+    };
 
 /// The real thing: Appodeal SDK 4.3 through `stack_appodeal_flutter` 4.3.1.
 class AppodealPluginApi implements AppodealApi {
@@ -139,6 +204,10 @@ class AppodealPluginApi implements AppodealApi {
 
   @override
   Widget bannerView(String placement) => AppodealBanner(adSize: AppodealBannerSize.BANNER, placement: placement);
+
+  @override
+  void setRevenueCallback(void Function(AppodealRevenue revenue) onRevenue) =>
+      Appodeal.setAdRevenueCallbacks(onAdRevenueReceive: (r) => onRevenue(AppodealRevenue.fromSdk(r)));
 }
 
 /// Appodeal (mediation over Unity Ads, AppLovin, Mintegral, Vungle and the
@@ -224,7 +293,32 @@ class AppodealAdapter implements MaxAdPlugin, BannerAdPlugin {
     return done.future.timeout(initTimeout, onTimeout: () => _initialized);
   }
 
+  /// The SDK's revenue report becomes Firebase's `ad_impression` (through
+  /// the shared facade, so GA4 sums `value` as ad revenue by stream, country
+  /// and version). `ad_unit_name` is the placement the app asked with;
+  /// Appodeal's own unit name and the precision ride along.
+  void _onRevenue(AppodealRevenue r) {
+    Analytics.instance.adImpression(
+      platform: 'appodeal',
+      format: r.format,
+      source: r.networkName,
+      unitName: r.placement,
+      value: r.revenue,
+      currency: r.currency,
+      extra: {
+        'ad_unit': r.adUnitName,
+        'demand_source': r.demandSource,
+        'precision': r.precision,
+      },
+    );
+  }
+
   void _wireCallbacks() {
+    try {
+      _api.setRevenueCallback(_onRevenue);
+    } catch (e) {
+      debugPrint('Appodeal: revenue callback not set: $e');
+    }
     _api.setRewardedCallbacks(
       onLoaded: () => _rewarded?.onLoaded(),
       onLoadFailed: () => _rewarded?.onLoadFailed(),
