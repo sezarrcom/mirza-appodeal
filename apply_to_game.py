@@ -56,6 +56,8 @@ def config(s):
             f"  pluginAds: PluginAds(\n"
             f"    create: () => AppodealAdapter(appKey: {prefix}AppodealKey),\n"
             f"    consent: () => AppodealConsent(appKey: {prefix}AppodealKey),\n"
+            f"    // the bottom banner (BannerSlot): Appodeal's default placement\n"
+            f"    banner: 'default',\n"
             f"  ),\n"
             f");")
     s = s[:m.start()] + live + s[m.end():]
